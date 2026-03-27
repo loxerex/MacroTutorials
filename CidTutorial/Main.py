@@ -1,10 +1,13 @@
-import InputHandler
+
 import pyautogui
 import pygetwindow
 import time
 import os
+import sys
+sys.path.append(os.getcwd())
+import InputHandler
 import keyboard
-
+from threading import Thread
 # Find the Roblox window so all click positions can be offset correctly
 # This lets the macro work even if Roblox isn't at (0,0) on the screen
 for window in pygetwindow.getAllWindows():
@@ -29,6 +32,7 @@ KEYMAP = {
     "f": 0x21,
     "g": 0x22,
     "x": 0x2D,
+    "q":0x10,
     "1": 0x02,
     "2": 0x03,
     "3": 0x04,
@@ -43,12 +47,11 @@ KEYMAP = {
 # =========================
 # Predefined world positions where units should be placed
 # These are adjusted by the Roblox window offset above
-BROOK_POS = (373 + dx, 385 + dy)
-ICHIGO_POS = (390 + dx, 318 + dy)
-SOKORA_POS = (372 + dx, 185 + dy)
-NEWSMAN_P1 = (382 + dx, 337 + dy)
-NEWSMAN_P2 = (353 + dx, 336 + dy)
-
+BROOK_POS = (403 + dx,372 + dy)
+ICHIGO_POS = (412 + dx, 303 + dy)
+SOKORA_POS = (421 + dx, 262 + dy)
+NEWSMAN_P1 = (370 + dx, 324 + dy)
+#370, 324
 # =========================
 # UI positions / references
 # =========================
@@ -57,12 +60,13 @@ UNIT_CLOSE = (305 + dx, 233 + dy)              # White X close button when a uni
 WAVE_SKIP = (616 + dx, 40 + dy)                # Wave skip white text
 ABILITY1 = (333 + dx, 278 + dy)                # First ability button
 ABILITY2 = (333 + dx, 338 + dy)                # Second ability button
-BROOK_ABILITY_CLOSE = (536 + dx, 139 + dy)     # Close button for brook's ability
+BROOK_ABILITY_CLOSE = (590 + dx, 183 + dy)     # Close button for brook's ability
 STOCK1 = (601 + dx, 41 + dy)                   # First stock indicator
-STOCK2 = (459 + dx, 41 + dy)                   # Second stock indicator
+STOCK2 = (356 + dx, 41 + dy)                   # Second stock indicator
 STOCK_COLOR = (21, 222, 51)                    # Green color used to detect stock availability
 BOSS_ALIVE = (310 + dx, 113 + dy)              # Boss UI indicator still visible = boss alive
-
+BROOK_ULT = 2.52
+BOSS = 7.79
 def exit(x):
     # Emergency hard stop when ; is pressed
     os._exit(0)
@@ -90,6 +94,8 @@ def place(unit: int, pos: tuple[int, int]):
     # Wait until the unit info panel opens
     # This confirms the unit was actually placed and selected
     while not pyautogui.pixelMatchesColor(*UNIT_CLOSE, expectedRGBColor=(255, 255, 255)):
+        if pyautogui.pixelMatchesColor(725 + dx, 169 + dy, (255, 255, 255)):
+                break
         time.sleep(0.01)
 
 def select(pos: tuple[int, int]):
@@ -107,12 +113,14 @@ def select(pos: tuple[int, int]):
 
     # Wait until the unit opens, which confirms selection
     while not pyautogui.pixelMatchesColor(*UNIT_CLOSE, expectedRGBColor=(255, 255, 255)):
+        if pyautogui.pixelMatchesColor(725 + dx, 169 + dy, (255, 255, 255)):
+                break
         # If too much time passes, try clicking the unit again
         if time.time() - timedelta > 0.9:
             InputHandler.Click(*pos, delay=0.1)
             timedelta = time.time()
         time.sleep(0.01)
-
+    print(f"Selected Unit at {pos}")
 def brook_buff():
     # Brook Buff
     print(f"Doing Brook Buff")
@@ -127,6 +135,8 @@ def brook_buff():
     while not brook:
         # If the Brook prompt is visible (white pixel), the rhythm window is active
         if pyautogui.pixelMatchesColor(*BROOK_ABILITY_CLOSE, (255, 255, 255)):
+            if pyautogui.pixelMatchesColor(725 + dx, 169 + dy, (255, 255, 255)):
+                break
             # Make sure all keys are released first
             for k in keys:
                 InputHandler.KeyUp(KEYMAP[k])
@@ -148,13 +158,36 @@ def brook_buff():
                     break
         else:
             # If the prompt isn't visible yet, keep trying to activate ability 1
+            if pyautogui.pixelMatchesColor(725 + dx, 169 + dy, (255, 255, 255)):
+                break
             InputHandler.Click(*ABILITY1, delay=0.1)
+            time.sleep(0.2)
 
     # Close Brook's ability UI when done
     InputHandler.Click(*BROOK_ABILITY_CLOSE, 0.1)
-
-def main_loop():
+global USE_BROOK
+USE_BROOK = False
+def boss_watcher():
+    global USE_BROOK
     while True:
+        while not pyautogui.pixelMatchesColor(*BOSS_ALIVE, (255, 255, 255)):
+            time.sleep(0.1)
+        while pyautogui.pixelMatchesColor(*BOSS_ALIVE, (255, 255, 255)):
+            time.sleep(0.1)
+        boss_dead = time.time()
+        print("Boss Is dead")
+        while time.time() - (boss_dead) < (BOSS-BROOK_ULT+0.15):
+            print(f"{(BOSS-BROOK_ULT)} | {time.time() - (boss_dead)}")
+            time.sleep(0.1)
+        USE_BROOK = True
+        while USE_BROOK:
+            time.sleep(0.1)
+Thread(target=boss_watcher,daemon=True).start()
+def main_loop():
+    runs = 0
+    while True:
+        global USE_BROOK
+        print("=====================")
         # =========================
         # Pre-match setup / lobby
         # =========================
@@ -167,6 +200,8 @@ def main_loop():
         # Wait until the spawn/start UI appears
         print("Waiting for spawn.")
         while not pyautogui.pixelMatchesColor(394 + dx, 123 + dy, expectedRGBColor=(10, 10, 10)):
+            if pyautogui.pixelMatchesColor(725 + dx, 169 + dy, (255, 255, 255)):
+                InputHandler.Click(374 + dx, 474 + dy, 0.1)    
             time.sleep(0.1)
 
         # Spam the start button while it is still visible
@@ -175,15 +210,15 @@ def main_loop():
             InputHandler.Click(472 + dx, 127 + dy, 0.1)
             time.sleep(0.3)
 
-        print("Match Started")
-
+        print(f"Match {runs} Started")
+        if pyautogui.pixelMatchesColor(615 + dx, 88 + dy, (11, 231, 241)):
+            press("f")
         # =========================
         # Early setup
         # =========================
 
         # Place Brook first
         place(4, BROOK_POS)
-
         # Place Ichigo next
         place(1, ICHIGO_POS)
 
@@ -195,21 +230,10 @@ def main_loop():
         # =========================
         # Place Newsman (multi-place)
         # =========================
-
-        # Select Newsman slot
-        press("5")
-
-        # Hold shift to place multiple units without reselecting the hotbar slot
-        InputHandler.KeyDown(KEYMAP["shift"])
-        time.sleep(0.3)
-
-        # Place at both positions 
-        InputHandler.Click(*NEWSMAN_P1, delay=0.1)
-        InputHandler.Click(*NEWSMAN_P2, delay=0.1)
-
-        time.sleep(0.3)
-        InputHandler.KeyUp(KEYMAP["shift"])
-
+        while pyautogui.pixelMatchesColor(*BROOK_ABILITY_CLOSE, (255, 255, 255)):
+            time.sleep(0.1)
+        place(5,NEWSMAN_P1)
+        time.sleep(0.2)
         # Place Sokora
         place(3, SOKORA_POS)
 
@@ -219,6 +243,9 @@ def main_loop():
 
         # While stock 1 is available, repeatedly use Sokora's first ability targeting Ichigo
         while pyautogui.pixelMatchesColor(*STOCK1, STOCK_COLOR):
+            if pyautogui.pixelMatchesColor(725 + dx, 169 + dy, (255, 255, 255)):
+                break
+            press("q")
             select(SOKORA_POS)
             InputHandler.Click(*ABILITY1, delay=0.1)
             InputHandler.Click(*ICHIGO_POS, delay=0.1)
@@ -229,6 +256,8 @@ def main_loop():
 
         # Wait until the unit manager is open
         while not pyautogui.pixelMatchesColor(615 + dx, 88 + dy, (11, 231, 241)):
+            if pyautogui.pixelMatchesColor(725 + dx, 169 + dy, (255, 255, 255)):
+                break
             time.sleep(0.1)
 
         # =========================
@@ -239,11 +268,14 @@ def main_loop():
         select(SOKORA_POS)
 
         Gohan_Found = False
+        First = False
         while not Gohan_Found:
+            if pyautogui.pixelMatchesColor(725 + dx, 169 + dy, (255, 255, 255)):
+                break
             print("Gohan")
-
+            press("q")
             # If Sokora somehow becomes deselected / bad UI state, reselect
-            if pyautogui.pixelMatchesColor(332 + dx, 317 + dy, expectedRGBColor=(216, 14, 18), tolerance=50):
+            if First and pyautogui.pixelMatchesColor(332 + dx, 317 + dy, expectedRGBColor=(216, 14, 18), tolerance=50):
                 select(SOKORA_POS)
 
             # Activate Sokora's ability
@@ -262,40 +294,46 @@ def main_loop():
                 print("Found")
                 InputHandler.Click(*pyautogui.center(gohan_location), delay=0.1)
 
-            time.sleep(0.4)
-
+            time.sleep(0.2)
+            if pyautogui.pixelMatchesColor(453 + dx, 293 + dy, expectedRGBColor=(20, 20, 20), tolerance=5):
+                InputHandler.Click(407 + dx, 358 + dy, 0.1)
             # Stop when stock 2 is gone
             if not pyautogui.pixelMatchesColor(*STOCK2, STOCK_COLOR, tolerance=40):
                 break
+            First = True
 
         # Unit Manager
         press("f")
-
+        if pyautogui.pixelMatchesColor(453 + dx, 293 + dy, expectedRGBColor=(20, 20, 20), tolerance=5):
+                InputHandler.Click(407 + dx, 358 + dy, 0.1)
         # Sell Sokora
         select(SOKORA_POS)
         press("x")
-
+        if pyautogui.pixelMatchesColor(453 + dx, 293 + dy, expectedRGBColor=(20, 20, 20), tolerance=5):
+                InputHandler.Click(407 + dx, 358 + dy, 0.1)
         # Select Brook for the boss phase
         select(BROOK_POS)
-
-        # Wait until the boss UI disappears, meaning the boss is dead
-        while pyautogui.pixelMatchesColor(*BOSS_ALIVE, (255, 255, 255)):
-            time.sleep(0.01)
-
-        # Small delay after boss death
-        time.sleep(4)
-
-        # Re-select Brook
+        time.sleep(0.5)
         select(BROOK_POS)
+        # Wait until the boss UI disappears, meaning the boss is dead
+        while not USE_BROOK:
+            if pyautogui.pixelMatchesColor(725 + dx, 169 + dy, (255, 255, 255)):
+                break
+            time.sleep(0.01)
+        if pyautogui.pixelMatchesColor(453 + dx, 293 + dy, expectedRGBColor=(20, 20, 20), tolerance=5):
+                InputHandler.Click(407 + dx, 358 + dy, 0.1)
 
         # Keep trying to activate ability 2 match ends
         while not pyautogui.pixelMatchesColor(725 + dx, 169 + dy, (255, 255, 255)):
             InputHandler.Click(*ABILITY2, delay=0.1)
             time.sleep(0.1)
-
+        if pyautogui.pixelMatchesColor(453 + dx, 293 + dy, expectedRGBColor=(20, 20, 20), tolerance=5):
+                InputHandler.Click(407 + dx, 358 + dy, 0.1)
         # While match edned, click retry epeatedly
         while pyautogui.pixelMatchesColor(725 + dx, 169 + dy, (255, 255, 255)):
             InputHandler.Click(374 + dx, 474 + dy, 0.1)
             time.sleep(0.1)
-
+        USE_BROOK = False
+        runs += 1
 main_loop()
+
